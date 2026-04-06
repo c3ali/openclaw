@@ -26,12 +26,14 @@ services:
       - dist/index.js
       - gateway
       - --bind
-      - ${OPENCLAW_GATEWAY_BIND:-lan}
+      - lan
       - --port
       - "18789"
       - --token
       - ${OPENCLAW_GATEWAY_TOKEN}
       - --allow-unconfigured
+      - --allowed-origins
+      - "*"
     healthcheck:
       test:
         - CMD
