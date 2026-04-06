@@ -1,6 +1,6 @@
 services:
   openclaw-gateway:
-    image: ${OPENCLAW_IMAGE:-openclaw:local}
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
     user: root
     environment:
       HOME: /home/node
@@ -29,6 +29,9 @@ services:
       - ${OPENCLAW_GATEWAY_BIND:-lan}
       - --port
       - "18789"
+      - --token
+      - ${OPENCLAW_GATEWAY_TOKEN}
+      - --allow-unconfigured
     healthcheck:
       test:
         - CMD
@@ -41,7 +44,7 @@ services:
       start_period: 20s
 
   openclaw-cli:
-    image: ${OPENCLAW_IMAGE:-openclaw:local}
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
     user: root
     network_mode: "service:openclaw-gateway"
     cap_drop:
