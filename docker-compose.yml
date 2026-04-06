@@ -1,3 +1,4 @@
+```yaml
 services:
   openclaw-gateway:
     image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
@@ -11,6 +12,7 @@ services:
       CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
       CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
       TZ: ${OPENCLAW_TZ:-UTC}
+      OPENCLAW_CONFIG_JSON: '{"gateway":{"controlUi":{"allowedOrigins":["*"],"dangerouslyDisableDeviceAuth":true,"allowInsecureAuth":true},"trustedProxies":["0.0.0.0/0"]}}'
     volumes:
       - openclaw-data:/home/node/.openclaw
       - openclaw-workspace:/home/node/.openclaw/workspace
@@ -32,8 +34,6 @@ services:
       - --token
       - ${OPENCLAW_GATEWAY_TOKEN}
       - --allow-unconfigured
-      - --allowed-origins
-      - "*"
     healthcheck:
       test:
         - CMD
@@ -85,3 +85,4 @@ volumes:
 networks:
   dokploy-network:
     external: true
+```
