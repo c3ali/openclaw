@@ -1,6 +1,7 @@
 services:
   openclaw-gateway:
     image: ${OPENCLAW_IMAGE:-openclaw:local}
+    user: root
     environment:
       HOME: /home/node
       TERM: xterm-256color
@@ -11,16 +12,8 @@ services:
       CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
       TZ: ${OPENCLAW_TZ:-UTC}
     volumes:
-      - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
-      - ${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
-      ## Uncomment the lines below to enable sandbox isolation
-      ## (agents.defaults.sandbox). Requires Docker CLI in the image
-      ## (build with --build-arg OPENCLAW_INSTALL_DOCKER_CLI=1) or use
-      ## scripts/docker/setup.sh with OPENCLAW_SANDBOX=1 for automated setup.
-      ## Set DOCKER_GID to the host's docker group GID (run: stat -c '%g' /var/run/docker.sock).
-      # - /var/run/docker.sock:/var/run/docker.sock
-    # group_add:
-    #   - "${DOCKER_GID:-999}"
+      - openclaw-data:/home/node/.openclaw
+      - openclaw-workspace:/home/node/.openclaw/workspace
     ports:
       - "${OPENCLAW_GATEWAY_PORT:-18789}:18789"
       - "${OPENCLAW_BRIDGE_PORT:-18790}:18790"
@@ -48,9 +41,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-
   openclaw-cli:
     image: ${OPENCLAW_IMAGE:-openclaw:local}
+    user: root
     network_mode: "service:openclaw-gateway"
     cap_drop:
       - NET_RAW
@@ -68,11 +61,16 @@ services:
       CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
       TZ: ${OPENCLAW_TZ:-UTC}
     volumes:
-      - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
-      - ${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
+      - openclaw-data:/home/node/.openclaw
+      - openclaw-workspace:/home/node/.openclaw/workspace
     stdin_open: true
     tty: true
+    user: root
     init: true
     entrypoint: ["node", "dist/index.js"]
     depends_on:
       - openclaw-gateway
+
+volumes:
+  openclaw-data:
+  openclaw-workspace:
