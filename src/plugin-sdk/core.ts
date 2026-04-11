@@ -1,6 +1,6 @@
-import { CHAT_CHANNEL_ORDER, type ChatChannelId } from "../channels/ids.js";
+import { buildChatChannelMetaById } from "../channels/chat-meta-shared.js";
+import type { ChatChannelId } from "../channels/ids.js";
 import { emptyChannelConfigSchema } from "../channels/plugins/config-schema.js";
-import { resolveChannelExposure } from "../channels/plugins/exposure.js";
 import { buildAccountScopedDmSecurityPolicy } from "../channels/plugins/helpers.js";
 import {
   createScopedAccountReplyToModeResolver,
@@ -11,24 +11,25 @@ import type {
   ChannelPairingAdapter,
   ChannelSecurityAdapter,
 } from "../channels/plugins/types.adapters.js";
+import type { ChannelConfigSchema, ChannelConfigUiHint } from "../channels/plugins/types.config.js";
 import type {
   ChannelMessagingAdapter,
   ChannelOutboundSessionRoute,
   ChannelPollResult,
   ChannelThreadingAdapter,
 } from "../channels/plugins/types.core.js";
-import type { ChannelMeta } from "../channels/plugins/types.js";
-import type { ChannelConfigSchema, ChannelPlugin } from "../channels/plugins/types.plugin.js";
-import type { OpenClawConfig } from "../config/config.js";
+import type { ChannelPlugin } from "../channels/plugins/types.plugin.js";
+import type { ChannelMeta } from "../channels/plugins/types.public.js";
 import type { ReplyToMode } from "../config/types.base.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { buildOutboundBaseSessionKey } from "../infra/outbound/base-session-key.js";
 import type { OutboundDeliveryResult } from "../infra/outbound/deliver.js";
-import { listBundledPluginMetadata } from "../plugins/bundled-plugin-metadata.js";
-import type { PluginPackageChannel } from "../plugins/manifest.js";
 import type { PluginRuntime } from "../plugins/runtime/types.js";
 import type { OpenClawPluginApi } from "../plugins/types.js";
+import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
 
 export type {
+  AgentHarness,
   AnyAgentTool,
   MediaUnderstandingProviderPlugin,
   OpenClawPluginApi,
@@ -86,6 +87,11 @@ export type {
 } from "./plugin-entry.js";
 export type { OpenClawPluginToolContext, OpenClawPluginToolFactory } from "../plugins/types.js";
 export type {
+  MemoryPluginCapability,
+  MemoryPluginPublicArtifact,
+  MemoryPluginPublicArtifactsProvider,
+} from "../plugins/memory-state.js";
+export type {
   PluginHookReplyDispatchContext,
   PluginHookReplyDispatchEvent,
   PluginHookReplyDispatchResult,
@@ -102,7 +108,7 @@ export type {
   ChannelMessageActionName,
   ChannelMeta,
   ChannelSetupInput,
-} from "../channels/plugins/types.js";
+} from "../channels/plugins/types.public.js";
 export type { ChatType } from "../channels/chat-type.js";
 export type { NormalizedLocation } from "../channels/location.js";
 export type { ChannelDirectoryEntry } from "../channels/plugins/types.core.js";
@@ -138,8 +144,9 @@ export type {
   UsageProviderId,
   UsageWindow,
 } from "../infra/provider-usage.types.js";
-export type { ChannelMessageActionContext } from "../channels/plugins/types.js";
-export type { ChannelConfigUiHint, ChannelPlugin } from "../channels/plugins/types.plugin.js";
+export type { ChannelMessageActionContext } from "../channels/plugins/types.public.js";
+export type { ChannelPlugin } from "../channels/plugins/types.plugin.js";
+export type { ChannelConfigUiHint } from "../channels/plugins/types.config.js";
 export type { PluginRuntime, RuntimeLogger } from "../plugins/runtime/types.js";
 export type { WizardPrompter } from "../wizard/prompts.js";
 
@@ -148,7 +155,10 @@ export { buildPluginConfigSchema, emptyPluginConfigSchema } from "../plugins/con
 export { KeyedAsyncQueue, enqueueKeyedTask } from "./keyed-async-queue.js";
 export { createDedupeCache, resolveGlobalDedupeCache } from "../infra/dedupe.js";
 export { generateSecureToken, generateSecureUuid } from "../infra/secure-random.js";
-export { delegateCompactionToRuntime } from "../context-engine/delegate.js";
+export {
+  buildMemorySystemPromptAddition,
+  delegateCompactionToRuntime,
+} from "../context-engine/delegate.js";
 export { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../routing/session-key.js";
 export {
   buildChannelConfigSchema,
@@ -217,93 +227,6 @@ export type ChannelOutboundSessionRouteParams = Parameters<
 >[0];
 
 var cachedSdkChatChannelMeta: ReturnType<typeof buildChatChannelMetaById> | undefined;
-var cachedSdkChatChannelIdSet: Set<string> | undefined;
-
-function getSdkChatChannelIdSet(): Set<string> {
-  cachedSdkChatChannelIdSet ??= new Set(CHAT_CHANNEL_ORDER);
-  return cachedSdkChatChannelIdSet;
-}
-
-function toSdkChatChannelMeta(params: {
-  id: ChatChannelId;
-  channel: PluginPackageChannel;
-}): ChannelMeta {
-  const label = params.channel.label?.trim();
-  if (!label) {
-    throw new Error(`Missing label for bundled chat channel "${params.id}"`);
-  }
-  const exposure = resolveChannelExposure(params.channel);
-  return {
-    id: params.id,
-    label,
-    selectionLabel: params.channel.selectionLabel?.trim() || label,
-    docsPath: params.channel.docsPath?.trim() || `/channels/${params.id}`,
-    docsLabel: params.channel.docsLabel?.trim() || undefined,
-    blurb: params.channel.blurb?.trim() || "",
-    ...(params.channel.aliases?.length ? { aliases: params.channel.aliases } : {}),
-    ...(params.channel.order !== undefined ? { order: params.channel.order } : {}),
-    ...(params.channel.selectionDocsPrefix !== undefined
-      ? { selectionDocsPrefix: params.channel.selectionDocsPrefix }
-      : {}),
-    ...(params.channel.selectionDocsOmitLabel !== undefined
-      ? { selectionDocsOmitLabel: params.channel.selectionDocsOmitLabel }
-      : {}),
-    ...(params.channel.selectionExtras?.length
-      ? { selectionExtras: params.channel.selectionExtras }
-      : {}),
-    ...(params.channel.detailLabel?.trim()
-      ? { detailLabel: params.channel.detailLabel.trim() }
-      : {}),
-    ...(params.channel.systemImage?.trim()
-      ? { systemImage: params.channel.systemImage.trim() }
-      : {}),
-    ...(params.channel.markdownCapable !== undefined
-      ? { markdownCapable: params.channel.markdownCapable }
-      : {}),
-    exposure,
-    ...(params.channel.quickstartAllowFrom !== undefined
-      ? { quickstartAllowFrom: params.channel.quickstartAllowFrom }
-      : {}),
-    ...(params.channel.forceAccountBinding !== undefined
-      ? { forceAccountBinding: params.channel.forceAccountBinding }
-      : {}),
-    ...(params.channel.preferSessionLookupForAnnounceTarget !== undefined
-      ? {
-          preferSessionLookupForAnnounceTarget: params.channel.preferSessionLookupForAnnounceTarget,
-        }
-      : {}),
-    ...(params.channel.preferOver?.length ? { preferOver: params.channel.preferOver } : {}),
-  };
-}
-
-function buildChatChannelMetaById(): Record<ChatChannelId, ChannelMeta> {
-  const entries = new Map<ChatChannelId, ChannelMeta>();
-  for (const entry of listBundledPluginMetadata({
-    includeChannelConfigs: true,
-    includeSyntheticChannelConfigs: false,
-  })) {
-    const channel =
-      entry.packageManifest && "channel" in entry.packageManifest
-        ? entry.packageManifest.channel
-        : undefined;
-    if (!channel) {
-      continue;
-    }
-    const rawId = channel.id?.trim();
-    if (!rawId || !getSdkChatChannelIdSet().has(rawId)) {
-      continue;
-    }
-    const id = rawId;
-    entries.set(
-      id,
-      toSdkChatChannelMeta({
-        id,
-        channel,
-      }),
-    );
-  }
-  return Object.freeze(Object.fromEntries(entries)) as Record<ChatChannelId, ChannelMeta>;
-}
 
 function resolveSdkChatChannelMeta(id: string) {
   cachedSdkChatChannelMeta ??= buildChatChannelMetaById();
@@ -318,8 +241,8 @@ export function getChatChannelMeta(id: ChatChannelId): ChannelMeta {
 export function stripChannelTargetPrefix(raw: string, ...providers: string[]): string {
   const trimmed = raw.trim();
   for (const provider of providers) {
-    const prefix = `${provider.toLowerCase()}:`;
-    if (trimmed.toLowerCase().startsWith(prefix)) {
+    const prefix = `${normalizeLowercaseStringOrEmpty(provider)}:`;
+    if (normalizeLowercaseStringOrEmpty(trimmed).startsWith(prefix)) {
       return trimmed.slice(prefix.length).trim();
     }
   }

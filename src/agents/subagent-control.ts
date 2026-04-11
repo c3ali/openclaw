@@ -6,15 +6,16 @@ import {
   sortSubagentRuns,
   type SubagentTargetResolution,
 } from "../auto-reply/reply/subagents-utils.js";
-import type { OpenClawConfig } from "../config/config.js";
 import type { SessionEntry } from "../config/sessions.js";
 import { loadSessionStore, resolveStorePath, updateSessionStore } from "../config/sessions.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { callGateway } from "../gateway/call.js";
 import { logVerbose } from "../globals.js";
+import { formatErrorMessage } from "../infra/errors.js";
 import { isSubagentSessionKey, parseAgentSessionKey } from "../routing/session-key.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 import { AGENT_LANE_SUBAGENT } from "./lanes.js";
-import { abortEmbeddedPiRun } from "./pi-embedded.js";
+import { abortEmbeddedPiRun } from "./pi-embedded-runner/runs.js";
 import {
   readLatestAssistantReplySnapshot,
   waitForAgentRunAndReadUpdatedAssistantReply,
@@ -32,15 +33,18 @@ import {
 } from "./subagent-list.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
 import {
-  clearSubagentRunSteerRestart,
-  countPendingDescendantRuns,
   getLatestSubagentRunByChildSessionKey,
   listSubagentRunsForController,
+} from "./subagent-registry-read.js";
+import { getSubagentRunsSnapshotForRead } from "./subagent-registry-state.js";
+import {
+  clearSubagentRunSteerRestart,
+  countPendingDescendantRuns,
   markSubagentRunTerminated,
   markSubagentRunForSteerRestart,
   replaceSubagentRunAfterSteer,
-  type SubagentRunRecord,
 } from "./subagent-registry.js";
+import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import { resolveInternalSessionKey, resolveMainSessionAlias } from "./tools/sessions-helpers.js";
 
 export const DEFAULT_RECENT_MINUTES = 30;
@@ -168,9 +172,7 @@ async function killSubagentRun(params: {
       });
     } catch (error) {
       logVerbose(
-        `subagents control kill: failed to persist abortedLastRun for ${childSessionKey}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `subagents control kill: failed to persist abortedLastRun for ${childSessionKey}: ${formatErrorMessage(error)}`,
       );
     }
   }
@@ -554,7 +556,7 @@ export async function steerControlledSubagentRun(params: {
     }
   } catch (err) {
     clearSubagentRunSteerRestart(params.entry.runId);
-    const error = err instanceof Error ? err.message : String(err);
+    const error = formatErrorMessage(err);
     return {
       status: "error",
       runId,
@@ -678,7 +680,7 @@ export async function sendControlledSubagentMessage(params: {
     }
     return { status: "ok" as const, runId, replyText: result.replyText };
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
+    const error = formatErrorMessage(err);
     return { status: "error" as const, runId, error };
   }
 }
